@@ -1,74 +1,63 @@
-const express = require('express')
-const app = express()
-const port = process.env.port || 5000;
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 5000;
 const cors = require('cors');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-const admin = require('firebase-admin');
-const serviceAccount = require(process.env.GOOGLE_APPLICATION_CREDENTIALS); // Initialize Firebase Admin
 
+const admin = require('firebase-admin');
+const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+// Initialize Firebase Admin with environment variable JSON
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS)),
 });
 
-// middleware
+// Middleware
 app.use(cors());
 app.use(express.json());
 
+// Root route
 app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
+  res.send('Hello World!');
+});
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
-
+// MongoDB connection URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.t79plj2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// Create a MongoClient instance
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
-  }
+  },
 });
 
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
+    // Connect to the MongoDB server
     client.connect();
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
 
     const userCollection = client.db('task3').collection('users');
 
+    // API to create a new user
     app.post('/users', async (req, res) => {
       const user = req.body;
       const result = await userCollection.insertOne(user);
       res.send(result);
-    })
+    });
 
+    // API to update last login for a user
     app.put('/users/:email', async (req, res) => {
       const email = req.params.email;
-      const { lastlogin } = req.body; // Destructuring the lastlogin from the request body
-    
-      // Create the filter to find the user by email
-      const filter = { email: email }; // No need for ObjectId, email is a string
-      const options = { upsert: false }; // If you don't want to create new users on PUT, set this to false
-    
-      // Define what should be updated
-      const updatedUser = {
-        $set: {
-          lastlogin: lastlogin, // Only update the lastlogin field
-        },
-      };
-    
-      // Perform the update operation
+      const { lastlogin } = req.body;
+
+      const filter = { email: email };
+      const options = { upsert: false };
+      const updatedUser = { $set: { lastlogin: lastlogin } };
+
       const result = await userCollection.updateOne(filter, updatedUser, options);
-    
-      // Send the result back to the client
       if (result.modifiedCount > 0) {
         res.status(200).send({ message: "Login time updated successfully" });
       } else {
@@ -76,36 +65,33 @@ async function run() {
       }
     });
 
-    app.get('/users', async(req,res) => {
+    // API to get all users
+    app.get('/users', async (req, res) => {
       const cursor = userCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
 
+    // API to get a specific user by email
     app.get('/users/:email', async (req, res) => {
       const email = req.params.email;
       const user = await userCollection.findOne({ email: email });
       res.send(user);
     });
 
-
-
+    // API to delete a user (both in MongoDB and Firebase)
     app.delete('/users/:email', async (req, res) => {
       const email = req.params.email;
 
       try {
-        // Delete user from Firebase Authentication
         const firebaseUser = await admin.auth().getUserByEmail(email);
         await admin.auth().deleteUser(firebaseUser.uid);
-        console.log(`Deleted Firebase user with UID: ${firebaseUser.uid}`);
 
-        // Delete user from MongoDB
         const result = await userCollection.deleteOne({ email: email });
-
         if (result.deletedCount > 0) {
-          res.status(200).json({ message: 'User deleted successfully from Firebase and MongoDB' });
+          res.status(200).json({ message: 'User deleted successfully' });
         } else {
-          res.status(404).json({ message: 'User not found in MongoDB' });
+          res.status(404).json({ message: 'User not found' });
         }
       } catch (error) {
         console.error('Error deleting user:', error);
@@ -113,56 +99,44 @@ async function run() {
       }
     });
 
+    // API to block a user
     app.put('/users/block/:email', async (req, res) => {
       const email = req.params.email;
-      
-      try {
-        const filter = { email: email }; // Filter by email
-        const updateDoc = {
-          $set: { status: 'blocked' },  // Set the status to 'blocked'
-        };
-    
-        const result = await userCollection.updateOne(filter, updateDoc);
-    
-        if (result.modifiedCount > 0) {
-          res.status(200).json({ message: 'User blocked successfully' });
-        } else {
-          res.status(404).json({ message: 'User not found' });
-        }
-      } catch (error) {
-        console.error('Error blocking user:', error);
-        res.status(500).json({ message: 'Internal server error' });
+
+      const filter = { email: email };
+      const updateDoc = { $set: { status: 'blocked' } };
+
+      const result = await userCollection.updateOne(filter, updateDoc);
+      if (result.modifiedCount > 0) {
+        res.status(200).json({ message: 'User blocked successfully' });
+      } else {
+        res.status(404).json({ message: 'User not found' });
       }
     });
 
+    // API to unblock a user
     app.put('/users/unblock/:email', async (req, res) => {
       const email = req.params.email;
-      
-      try {
-        const filter = { email: email }; // Filter by email
-        const updateDoc = {
-          $set: { status: 'Not-blocked' },  // Set the status to 'Not-blocked'
-        };
-    
-        const result = await userCollection.updateOne(filter, updateDoc);
-    
-        if (result.modifiedCount > 0) {
-          res.status(200).json({ message: 'User unblocked successfully' });
-        } else {
-          res.status(404).json({ message: 'User not found' });
-        }
-      } catch (error) {
-        console.error('Error unblocking user:', error);
-        res.status(500).json({ message: 'Internal server error' });
+
+      const filter = { email: email };
+      const updateDoc = { $set: { status: 'Not-blocked' } };
+
+      const result = await userCollection.updateOne(filter, updateDoc);
+      if (result.modifiedCount > 0) {
+        res.status(200).json({ message: 'User unblocked successfully' });
+      } else {
+        res.status(404).json({ message: 'User not found' });
       }
     });
 
-   
-
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    console.log("Successfully connected to MongoDB!");
+  } catch (error) {
+    console.error("Error running the server:", error);
   }
 }
+
 run().catch(console.dir);
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
