@@ -106,6 +106,50 @@ async function run() {
       }
     });
 
+    app.put('/users/block/:email', async (req, res) => {
+      const email = req.params.email;
+      
+      try {
+        const filter = { email: email }; // Filter by email
+        const updateDoc = {
+          $set: { status: 'blocked' },  // Set the status to 'blocked'
+        };
+    
+        const result = await userCollection.updateOne(filter, updateDoc);
+    
+        if (result.modifiedCount > 0) {
+          res.status(200).json({ message: 'User blocked successfully' });
+        } else {
+          res.status(404).json({ message: 'User not found' });
+        }
+      } catch (error) {
+        console.error('Error blocking user:', error);
+        res.status(500).json({ message: 'Internal server error' });
+      }
+    });
+
+    app.put('/users/unblock/:email', async (req, res) => {
+      const email = req.params.email;
+      
+      try {
+        const filter = { email: email }; // Filter by email
+        const updateDoc = {
+          $set: { status: 'Not-blocked' },  // Set the status to 'Not-blocked'
+        };
+    
+        const result = await userCollection.updateOne(filter, updateDoc);
+    
+        if (result.modifiedCount > 0) {
+          res.status(200).json({ message: 'User unblocked successfully' });
+        } else {
+          res.status(404).json({ message: 'User not found' });
+        }
+      } catch (error) {
+        console.error('Error unblocking user:', error);
+        res.status(500).json({ message: 'Internal server error' });
+      }
+    });
+
    
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
